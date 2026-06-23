@@ -4,7 +4,7 @@ from authlib.integrations.flask_client import OAuth
 import os, hashlib, random, string
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = "clave_secreta_larga_aleatoria_12345"
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'clave_secreta_123456')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -13,8 +13,8 @@ oauth = OAuth(app)
 
 discord = oauth.register(
     name='discord',
-    client_id=os.getenv("DISCORD_CLIENT_ID", ""),
-    client_secret=os.getenv("DISCORD_CLIENT_SECRET", ""),
+    client_id=os.getenv('DISCORD_CLIENT_ID', ''),
+    client_secret=os.getenv('DISCORD_CLIENT_SECRET', ''),
     authorize_url='https://discord.com/api/oauth2/authorize',
     access_token_url='https://discord.com/api/oauth2/token',
     userinfo_endpoint='https://discord.com/api/users/@me',
@@ -33,7 +33,7 @@ with app.app_context():
 
 @app.route('/')
 def inicio():
-    return "<h1>🛡️ Tu Sistema de Protección</h1><br><a href='/login'>🔑 Iniciar sesión con Discord</a>"
+    return "<h1>🛡️ ProtectorScript</h1><br><a href='/login'>🔑 Iniciar sesión con Discord</a>"
 
 @app.route('/login')
 def login():
@@ -71,4 +71,5 @@ def generar_clave():
     return jsonify({"clave": nueva_clave})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
