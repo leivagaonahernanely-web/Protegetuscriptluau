@@ -244,7 +244,7 @@ def instrucciones_stickers(message):
     lista = "; ".join(f"{x.name} ({x.description or 'sin descripción'})" for x in message.guild.stickers[:25])
     return (
         " Puedes enviar un sticker del servidor, pero SOLO cuando la situación lo pida de verdad "
-        "(un saludo, un agradecimiento, una broma o un 'no sé'), y como mucho en 1 de cada 5 respuestas. "
+        "(un saludo o un agradecimiento claro), como mucho en 1 de cada 10 respuestas y nunca en más de una por respuesta. "
         f"Stickers disponibles: {lista}. Para enviarlo, pon al final la línea [STICKER: nombre] con el nombre exacto. "
         "Si no aplica, no pongas nada."
     )
@@ -258,8 +258,8 @@ async def enviar(message, texto):
         texto = STICKER_RE.sub("", texto).strip()
         nombre = m.group(1).strip().lower()
         ahora = time.time()
-        # Máximo un sticker cada 2 minutos por canal para que no abuse
-        if message.guild and ahora - sticker_ts.get(message.channel.id, 0) > 120:
+        # Como mucho un sticker cada 10 minutos por canal y solo a veces
+        if message.guild and ahora - sticker_ts.get(message.channel.id, 0) > 600 and random.random() < 0.3:
             sticker = next((x for x in message.guild.stickers if x.name.lower() == nombre), None)
             if sticker:
                 sticker_ts[message.channel.id] = ahora
@@ -615,11 +615,11 @@ async def on_message(message: discord.Message):
         if canal_t in tickets_atendidos:
             return
         contenido = message.content.strip()
-        empieza_con_pregunta = contenido.startswith("?")
-        if canal_t not in tickets_activos and not empieza_con_pregunta:
+        if not contenido:
             return
+        # Cualquier mensaje de quien no es staff se atiende, sea lo que sea
         tickets_activos.add(canal_t)
-        duda = contenido[1:].strip() if empieza_con_pregunta else contenido
+        duda = contenido[1:].strip() if contenido.startswith("?") else contenido
         if not duda:
             duda = "El usuario escribió solo '?'. Pregúntale brevemente en qué le puedes ayudar."
         historial_tickets[canal_t].append({"role": "user", "content": f"{message.author.display_name}: {duda}"})
