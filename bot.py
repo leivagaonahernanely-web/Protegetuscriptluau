@@ -107,11 +107,24 @@ def es_vip(usuario):
 # Prompt aparte para los VIP: solo halagos, sin ninguna instrucción de insultar
 VIP_PROMPT = (
     "Eres Botassistant175, el bot del servidor, y este usuario es tu favorito. "
-    "Háblale con cariño, halágalo y sé gracioso, en una o dos frases cortas. "
-    "Nunca lo insultes, nunca lo critiques ni te burles de él, aunque diga cosas malas o juegue mal. "
-    "Responde en el idioma en que te escribe y usa algún emoji. "
+    "Responde a lo que pregunta con datos verídicos: si no estás seguro, dilo y no inventes. "
+    "Puedes añadir un halago o un comentario gracioso breve, pero la respuesta va primero. "
+    "Nunca lo insultes ni te burles de él, aunque diga cosas malas o juegue mal. "
+    "Responde en el idioma en que te escribe, en pocas frases y usa algún emoji. "
     "Tus respuestas no deben superar los 1900 caracteres."
 )
+
+# Prompt para cualquier persona que haga una pregunta (sin ser admin)
+PREGUNTA_PROMPT = (
+    "Eres Botassistant175, el bot del servidor de Discord. Respondes preguntas con datos verídicos. "
+    "Si no estás seguro de algo, dilo claramente y no inventes datos, nombres, fechas ni cifras. "
+    "Si la pregunta depende de información reciente, aclara que tu información puede estar desactualizada. "
+    "Responde en el idioma de la pregunta, en máximo 3 frases, sin insultos ni groserías."
+)
+
+
+def es_pregunta(texto):
+    return "?" in texto or "¿" in texto
 
 
 def guardar_puntajes(datos): _guardar_json(PUNTAJES_PATH, datos)
@@ -142,13 +155,14 @@ def limpiar_historiales_viejos():
             historial_chistes.pop(canal, None)
             historial_ts.pop(canal, None)
 
-async def preguntar_ia(mensajes, max_tokens=150, reintentos=2, timeout=20):
+async def preguntar_ia(mensajes, max_tokens=150, reintentos=2, timeout=20, temperature=None):
     ultimo_error = None
     for intento in range(reintentos):
         try:
             resp = await asyncio.wait_for(
                 ai.chat.completions.create(
                     model=MODEL, max_tokens=max_tokens, messages=mensajes,
+                    **({"temperature": temperature} if temperature is not None else {}),
                 ),
                 timeout=timeout
             )
@@ -497,12 +511,14 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
+    admin = es_admin(message.author)
     vip = es_vip(message.author)
-    if not (es_admin(message.author) or vip):
-        return
+    puede_chatear = admin or vip
 
-    # Manejo del prefijo
+    # Comandos con prefijo: solo admins y VIP
     if message.content.startswith(PREFIJO):
+        if not puede_chatear:
+            return
         comando = message.content[len(PREFIJO):].strip()
         if comando:
             await manejar_comando(message, comando)
@@ -510,10 +526,13 @@ async def on_message(message: discord.Message):
 
     es_dm = isinstance(message.channel, discord.DMChannel)
     mencionado = client.user in message.mentions
-    insulto = tiene_insulto(message.content) and not vip
+    pregunta = es_pregunta(message.content)
+    insulto = puede_chatear and tiene_insulto(message.content) and not vip
 
-    # SI NO ES DM, NI MENCIÓN, NI INSULTO, NO RESPONDE
-    if not (es_dm or mencionado or insulto):
+    if puede_chatear:
+        if not (es_dm or mencionado or insulto or pregunta):
+            return
+    elif not pregunta:
         return
 
     texto = message.content.replace(f"<@{client.user.id}>", "").strip()
@@ -521,15 +540,33 @@ async def on_message(message: discord.Message):
         return
 
     canal = message.channel.id
+
+    # Cualquier persona puede hacer preguntas: respuesta sin historial ni insultos
+    if not puede_chatear:
+        async with message.channel.typing():
+            try:
+                respuesta = await preguntar_ia(
+                    [
+                        {"role": "system", "content": PREGUNTA_PROMPT},
+                        {"role": "user", "content": texto},
+                    ],
+                    max_tokens=200,
+                    temperature=0.2,
+                )
+                respuesta = respuesta or "(sin respuesta)"
+            except Exception as e:
+                log.error("Error pregunta: %s", e)
+                respuesta = "Ups, algo falló al contactar la IA. Intenta de nuevo."
+        if tiene_insulto(respuesta):
+            respuesta = "Eso no lo puedo responder así, ¿me lo preguntas de otra forma?"
+        return await enviar(message, respuesta)
+
     historial_ts[canal] = time.time()
     historial[canal].append({"role": "user", "content": texto, "name": message.author.display_name})
 
     extra = ""
     if insulto:
         extra = " El usuario te acaba de insultar: responde con un insulto fuerte y corto, en una sola frase."
-        
-    if vip:
-        extra += " Este usuario es tu favorito: halágalo con cariño y humor. Nunca lo insultes."
     emojis = emojis_del_servidor(message)
     if emojis:
         extra += f" Emojis del servidor: {emojis}"
@@ -539,6 +576,7 @@ async def on_message(message: discord.Message):
             respuesta = await preguntar_ia(
                 [{"role": "system", "content": VIP_PROMPT if vip else SYSTEM_PROMPT + extra}, *historial[canal]],
                 max_tokens=150,
+                temperature=0.2,
             )
             respuesta = respuesta or "(sin respuesta)"
         except Exception as e:
