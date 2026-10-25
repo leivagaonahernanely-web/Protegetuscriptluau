@@ -104,6 +104,16 @@ def es_vip(usuario):
     return bool(nombres & VIP_USUARIOS)
 
 
+# Prompt aparte para los VIP: solo halagos, sin ninguna instrucción de insultar
+VIP_PROMPT = (
+    "Eres Botassistant175, el bot del servidor, y este usuario es tu favorito. "
+    "Háblale con cariño, halágalo y sé gracioso, en una o dos frases cortas. "
+    "Nunca lo insultes, nunca lo critiques ni te burles de él, aunque diga cosas malas o juegue mal. "
+    "Responde en el idioma en que te escribe y usa algún emoji. "
+    "Tus respuestas no deben superar los 1900 caracteres."
+)
+
+
 def guardar_puntajes(datos): _guardar_json(PUNTAJES_PATH, datos)
 def cargar_trivia(): return _cargar_json(TRIVIA_PATH, {})
 def guardar_trivia(datos): _guardar_json(TRIVIA_PATH, datos)
@@ -279,7 +289,7 @@ async def manejar_comando(message, comando):
         async with message.channel.typing():
             try:
                 respuesta = await preguntar_ia(
-                    [{"role": "system", "content": SYSTEM_PROMPT + extra}, {"role": "user", "content": resto}],
+                    [{"role": "system", "content": VIP_PROMPT if es_vip(message.author) else SYSTEM_PROMPT + extra}, {"role": "user", "content": resto}],
                     max_tokens=150,
                 )
             except Exception as e:
@@ -527,7 +537,7 @@ async def on_message(message: discord.Message):
     async with message.channel.typing():
         try:
             respuesta = await preguntar_ia(
-                [{"role": "system", "content": SYSTEM_PROMPT + extra}, *historial[canal]],
+                [{"role": "system", "content": VIP_PROMPT if vip else SYSTEM_PROMPT + extra}, *historial[canal]],
                 max_tokens=150,
             )
             respuesta = respuesta or "(sin respuesta)"
