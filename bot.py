@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from collections import defaultdict, deque
 
 import discord
@@ -28,7 +29,7 @@ SYSTEM_PROMPT = (
     "Si alguien hace una pregunta ambigua, haz una aclaración breve en lugar de suponer. "
     "Si te piden algo que pueda dañar a alguien o incumplir las normas de Discord, niégate con cortesía y ofrece una alternativa. "
     "Conoces los comandos del bot y puedes recordarlos si alguien se confunde: "
-    "`? 175 ask <pregunta>`, `? 175 translate <idioma> <texto>`, `? 175 trivia`, `? 175 r <letra>` y `? 175 puntajes`. "
+    "`? 175 ask <pregunta>`, `? 175 translate <idioma> <texto>`, `? 175 trivia [tema]`, `? 175 r <letra>`, `? 175 respuesta` y `? 175 puntajes`. "
     "Tus respuestas no deben superar los 1900 caracteres."
 )
 
@@ -45,6 +46,9 @@ historial = defaultdict(lambda: deque(maxlen=10))
 
 # Trivia activa por canal: {canal_id: {"pregunta": str, "respuesta": "A"|"B"|"C"|"D"}}
 trivia_activa = {}
+
+# Preguntas recientes por canal, para no repetirlas
+historial_trivia = defaultdict(lambda: deque(maxlen=30))
 
 
 def cargar_puntajes():
@@ -73,24 +77,44 @@ async def enviar(message, texto):
     await message.reply(texto[:1990], mention_author=False)
 
 
-async def generar_trivia():
-    texto = await preguntar_ia(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "Genera una pregunta de cultura general en español con 4 opciones (A, B, C, D). "
-                    "Responde SOLO con JSON válido con este formato: "
-                    '{"pregunta": "...", "opciones": ["...", "...", "...", "..."], "respuesta": "A"}'
-                ),
-            },
-            {"role": "user", "content": "Dame una pregunta nueva."},
-        ],
-        max_tokens=400,
-    )
-    # Quita texto extra o bloques de código alrededor del JSON
-    inicio, fin = texto.find("{"), texto.rfind("}")
-    return json.loads(texto[inicio : fin + 1])
+async def generar_trivia(tema=None, evitar=()):
+    tema_txt = f" sobre el tema: {tema}" if tema else " de cultura general"
+    evitar_txt = ""
+    if evitar:
+        evitar_txt = " No repitas ni hagas variaciones de estas preguntas: " + " | ".join(evitar) + "."
+    mensajes = [
+        {
+            "role": "system",
+            "content": (
+                f"Genera una pregunta de trivia en español{tema_txt}, con 4 opciones distintas y una sola correcta. "
+                "La pregunta debe tener una respuesta verificable y no ambigua. "
+                "Responde SOLO con JSON válido con este formato: "
+                '{"pregunta": "...", "opciones": ["...", "...", "...", "..."], "respuesta": "A"}'
+                + evitar_txt
+            ),
+        },
+        {"role": "user", "content": "Dame una pregunta nueva."},
+    ]
+    for _ in range(3):
+        try:
+            texto = await preguntar_ia(mensajes, max_tokens=400)
+            # Quita texto extra o bloques de código alrededor del JSON
+            inicio, fin = texto.find("{"), texto.rfind("}")
+            datos = json.loads(texto[inicio : fin + 1])
+            opciones = [str(o).strip() for o in datos["opciones"]]
+            if len(opciones) != 4 or len(set(opciones)) != 4:
+                raise ValueError("opciones inválidas")
+            correcta = opciones["ABCD".index(str(datos["respuesta"]).strip().upper()[:1])]
+            # Mezcla las opciones para que la correcta no siempre sea A
+            random.shuffle(opciones)
+            return {
+                "pregunta": str(datos["pregunta"]).strip(),
+                "opciones": opciones,
+                "respuesta": "ABCD"[opciones.index(correcta)],
+            }
+        except Exception as e:
+            print("Trivia: reintentando por", e)
+    raise RuntimeError("No se pudo generar una trivia válida")
 
 
 async def manejar_comando(message, comando):
@@ -136,21 +160,24 @@ async def manejar_comando(message, comando):
                 traduccion = "Ups, no pude traducir eso. Intenta de nuevo."
         return await enviar(message, traduccion or "(sin respuesta)")
 
-    # ? 175 trivia
+    # ? 175 trivia [tema]
     if accion == "trivia":
+        tema = resto or None
         async with message.channel.typing():
             try:
-                datos = await generar_trivia()
+                datos = await generar_trivia(tema, list(historial_trivia[canal]))
             except Exception as e:
                 print("Error trivia:", e)
                 return await enviar(message, "No pude generar la trivia. Intenta de nuevo.")
-        trivia_activa[canal] = {"pregunta": datos["pregunta"], "respuesta": datos["respuesta"].upper()}
+        historial_trivia[canal].append(datos["pregunta"])
+        trivia_activa[canal] = datos
         letras = ["A", "B", "C", "D"]
         opciones = "\n".join(f"{letra}) {op}" for letra, op in zip(letras, datos["opciones"]))
+        titulo = f"**Trivia{' · ' + tema if tema else ''}:**"
         return await enviar(
             message,
-            f"**Trivia:** {datos['pregunta']}\n{opciones}\n\nResponde con `? 175 r A` (o B, C, D). "
-            "La primera respuesta correcta suma un punto.",
+            f"{titulo} {datos['pregunta']}\n{opciones}\n\nResponde con `? 175 r A` (o B, C, D). "
+            "La primera respuesta correcta suma un punto. Si te rindes, usa `? 175 respuesta`.",
         )
 
     # ? 175 r <letra>
@@ -158,6 +185,8 @@ async def manejar_comando(message, comando):
         if canal not in trivia_activa:
             return await enviar(message, "No hay trivia activa. Usa `? 175 trivia` para empezar.")
         letra = resto.upper()[:1]
+        if letra not in "ABCD" or not letra:
+            return await enviar(message, "Responde con una letra: A, B, C o D.")
         activa = trivia_activa[canal]
         if letra == activa["respuesta"]:
             puntajes = cargar_puntajes()
@@ -171,6 +200,15 @@ async def manejar_comando(message, comando):
             )
         return await enviar(message, "Esa no es. Intenta de nuevo o usa `? 175 trivia` para otra pregunta.")
 
+    # ? 175 respuesta
+    if accion == "respuesta":
+        if canal not in trivia_activa:
+            return await enviar(message, "No hay trivia activa. Usa `? 175 trivia` para empezar.")
+        activa = trivia_activa.pop(canal)
+        letra = activa["respuesta"]
+        texto_correcto = activa["opciones"]["ABCD".index(letra)]
+        return await enviar(message, f"La respuesta era **{letra}) {texto_correcto}**. Usa `? 175 trivia` para otra pregunta.")
+
     # ? 175 puntajes
     if accion == "puntajes":
         puntajes = cargar_puntajes()
@@ -178,7 +216,7 @@ async def manejar_comando(message, comando):
             return await enviar(message, "Todavía no hay puntajes.")
         return await enviar(message, "Puntajes:\n" + "\n".join(f"<@{u}>: {p}" for u, p in sorted(puntajes.items(), key=lambda x: -x[1])))
 
-    await enviar(message, "Comandos: `ask`, `translate`, `trivia`, `r`, `puntajes`.")
+    await enviar(message, "Comandos: `ask`, `translate`, `trivia [tema]`, `r`, `respuesta`, `puntajes`.")
 
 
 @client.event
