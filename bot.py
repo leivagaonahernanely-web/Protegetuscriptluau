@@ -152,6 +152,12 @@ TICKET_PROMPT = (
 ) + LUAU_INFO + DISCORD_INFO
 
 
+# Estado de tickets (en memoria): activos = el bot está atendiendo; atendidos = ya llegó el staff
+tickets_activos = set()
+tickets_atendidos = set()
+historial_tickets = defaultdict(lambda: deque(maxlen=12))
+
+
 def es_canal_ticket(canal):
     # Los tickets son canales cuyo nombre termina en número, por ejemplo ticket-0042 o 0042
     nombre = getattr(canal, "name", "") or ""
@@ -561,30 +567,40 @@ async def on_message(message: discord.Message):
             await manejar_comando(message, comando)
         return
 
-    # Tickets: cualquiera puede escribir "?" y el bot responde; en lo demás no se mete
+    # Tickets: el bot atiende desde el primer "?" hasta que llegue un miembro del staff
     if es_canal_ticket(message.channel):
-        if message.content.strip().startswith("?"):
-            duda = message.content.strip()[1:].strip()
-            pedido = duda or "El usuario escribió solo '?'. Pregúntale brevemente en qué le puedes ayudar."
-            async with message.channel.typing():
-                try:
-                    respuesta = await preguntar_ia(
-                        [
-                            {"role": "system", "content": TICKET_PROMPT},
-                            {"role": "user", "content": pedido},
-                        ],
-                        max_tokens=250,
-                        temperature=0.2,
-                    )
-                    respuesta = respuesta or "Un miembro del staff te atenderá pronto."
-                except Exception as e:
-                    log.error("Error ticket: %s", e)
-                    respuesta = "Ups, algo falló. Un miembro del staff te atenderá pronto."
-            if tiene_insulto(respuesta):
-                respuesta = "Un miembro del staff te atenderá pronto. 🙂"
-            return await enviar(message, respuesta)
-        if not puede_chatear:
+        canal_t = message.channel.id
+        if admin:
+            # Llegó el staff: el bot deja de atender este ticket
+            tickets_activos.discard(canal_t)
+            tickets_atendidos.add(canal_t)
             return
+        if canal_t in tickets_atendidos:
+            return
+        contenido = message.content.strip()
+        empieza_con_pregunta = contenido.startswith("?")
+        if canal_t not in tickets_activos and not empieza_con_pregunta:
+            return
+        tickets_activos.add(canal_t)
+        duda = contenido[1:].strip() if empieza_con_pregunta else contenido
+        if not duda:
+            duda = "El usuario escribió solo '?'. Pregúntale brevemente en qué le puedes ayudar."
+        historial_tickets[canal_t].append({"role": "user", "content": f"{message.author.display_name}: {duda}"})
+        async with message.channel.typing():
+            try:
+                respuesta = await preguntar_ia(
+                    [{"role": "system", "content": TICKET_PROMPT}, *historial_tickets[canal_t]],
+                    max_tokens=250,
+                    temperature=0.2,
+                )
+                respuesta = respuesta or "Un miembro del staff te atenderá pronto."
+            except Exception as e:
+                log.error("Error ticket: %s", e)
+                respuesta = "Ups, algo falló. Un miembro del staff te atenderá pronto."
+        if tiene_insulto(respuesta):
+            respuesta = "Un miembro del staff te atenderá pronto. 🙂"
+        historial_tickets[canal_t].append({"role": "assistant", "content": respuesta})
+        return await enviar(message, respuesta)
 
     es_dm = isinstance(message.channel, discord.DMChannel)
     mencionado = client.user in message.mentions
