@@ -145,7 +145,9 @@ async def manejar_comando(message, comando):
                             "content": (
                                 "Eres un amigo gracioso de un servidor de Discord. Cuenta UN chiste corto en español, "
                                 "sin ofender a nadie ni usar temas sexuales, de odio o violentos. "
-                                "Solo responde con el chiste, sin introducción. "
+                                "Primero escribe el chiste completo. Luego, en una línea aparte que empiece con "
+                                "'↳ ', añade un comentario corto y gracioso que complemente el chiste (una remate extra, "
+                                "una reacción o una broma sobre el chiste). Sin introducción ni explicaciones largas. "
                                 f"No repitas ninguno de estos: {evitar}."
                             ),
                         },
