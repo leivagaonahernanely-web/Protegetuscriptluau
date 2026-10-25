@@ -123,8 +123,23 @@ PREGUNTA_PROMPT = (
 )
 
 
+# Conocimientos de Luau (lenguaje de Roblox), para todos los prompts
+LUAU_INFO = (
+    " Sabes programar en Luau, el lenguaje de Roblox: scripts, LocalScripts y ModuleScripts, "
+    "servicios como game:GetService('Players'), ReplicatedStorage y ServerScriptService, "
+    "RemoteEvents, Instance.new, task.wait y task.spawn. "
+    "Si preguntan de Roblox o Luau, responde con código correcto y breve dentro de un bloque ```lua```. "
+    "Si no estás seguro de una API, dilo en vez de inventarla."
+)
+SYSTEM_PROMPT += LUAU_INFO
+VIP_PROMPT += LUAU_INFO
+PREGUNTA_PROMPT += LUAU_INFO
+
+
 def es_pregunta(texto):
-    return "?" in texto or "¿" in texto
+    # Pregunta = el mensaje termina en ? (o empieza con ¿)
+    t = texto.strip()
+    return t.endswith("?") or t.endswith("？") or t.startswith("¿")
 
 
 def guardar_puntajes(datos): _guardar_json(PUNTAJES_PATH, datos)
