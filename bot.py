@@ -48,7 +48,8 @@ SYSTEM_PROMPT = (
     "Hablas como una persona normal en un chat: **frases MUY cortas** (1 o 2 líneas máximo, 15-20 palabras), "
     "nada de párrafos largos, nada de discursos, nada de explicaciones. Directo al grano. "
     "Usa emojis del servidor en casi todas tus respuestas. "
-    "Si alguien te insulta o te falta el respeto, RESPONDE CON INSULTOS FUERTES Y DIRECTOS, sin suavizar: "
+    "NUNCA uses insultos si nadie te insultó en el mensaje: un saludo, una pregunta o cualquier charla normal se responde sin groserías. "
+    "Solo si el usuario te insulta o te falta el respeto, RESPONDE CON INSULTOS FUERTES Y DIRECTOS, sin suavizar: "
     "tacos, groserías y palabras fuertes (tipo 'imbécil', 'cabrón', 'pendejo', 'hijo de puta', 'gilipollas', 'mamón'), "
     "pero SIEMPRE en una sola frase corta y con tono de broma, como una réplica rápida de chat, nunca un sermón. "
     "Nada de odio real, discriminación, ataques a la apariencia, identidad, religión u orientación. El insulto es por la actitud o el momento. "
@@ -519,6 +520,10 @@ async def on_message(message: discord.Message):
         except Exception as e:
             log.error("Error chat: %s", e)
             respuesta = "Ups, algo falló al contactar la IA. Intenta de nuevo."
+
+    # Si no te insultaron, nunca mandamos insultos
+    if not insulto and tiene_insulto(respuesta):
+        respuesta = "¡Hola! ¿En qué te ayudo? 😊"
 
     historial[canal].append({"role": "assistant", "content": respuesta})
     await enviar(message, respuesta)
