@@ -1,9 +1,12 @@
 import json
 import os
 import random
+import uuid
 from collections import defaultdict, deque
+from typing import Optional
 
 import discord
+from discord import app_commands
 from openai import AsyncOpenAI
 
 # Las keys se leen de las variables de entorno (Railway → Variables).
@@ -42,6 +45,11 @@ intents = discord.Intents.default()
 intents.message_content = True  # actívalo también en el Developer Portal
 
 client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
+
+# Fuentes: archivos que suben los admins y que todos pueden buscar.
+SOURCES_DIR = os.environ.get("SOURCES_DIR", "sources")
+SOURCES_PATH = os.environ.get("SOURCES_PATH", "sources.json")
 
 # Gemini ofrece un endpoint compatible con OpenAI
 ai = AsyncOpenAI(
@@ -68,6 +76,24 @@ def cargar_puntajes():
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+
+def cargar_fuentes():
+    try:
+        with open(SOURCES_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def guardar_fuentes(lista):
+    with open(SOURCES_PATH, "w", encoding="utf-8") as f:
+        json.dump(lista, f, ensure_ascii=False, indent=2)
+
+
+def es_admin(usuario):
+    # Solo miembros de un servidor con permiso de administrador (en DMs no hay permisos)
+    return isinstance(usuario, discord.Member) and usuario.guild_permissions.administrator
 
 
 def guardar_puntajes(datos):
@@ -259,14 +285,87 @@ async def manejar_comando(message, comando):
     await enviar(message, "Comandos: `ask`, `translate`, `trivia [tema]`, `r`, `respuesta`, `chiste`, `puntajes`.")
 
 
+find_group = app_commands.Group(name="find", description="Buscar cosas")
+
+
+@tree.command(name="sendsources", description="(Solo admins) Subir un archivo a las fuentes")
+@app_commands.describe(archivo="Archivo a subir", nombre="Nombre para buscarlo (opcional)")
+async def sendsources(interaction: discord.Interaction, archivo: discord.Attachment, nombre: Optional[str] = None):
+    if not es_admin(interaction.user):
+        return await interaction.response.send_message("Solo los admins pueden usar este comando.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+
+    os.makedirs(SOURCES_DIR, exist_ok=True)
+    nombre_archivo = os.path.basename(archivo.filename)
+    entry_id = uuid.uuid4().hex[:8]
+    ruta = os.path.join(SOURCES_DIR, f"{entry_id}_{nombre_archivo}")
+    await archivo.save(ruta)
+
+    nombre_final = (nombre or nombre_archivo).strip()
+    fuentes = cargar_fuentes()
+    fuentes.append({
+        "id": entry_id,
+        "nombre": nombre_final,
+        "archivo": nombre_archivo,
+        "ruta": ruta,
+        "subido_por": str(interaction.user.id),
+    })
+    guardar_fuentes(fuentes)
+    await interaction.followup.send(
+        f"Listo, guardé **{nombre_final}**. Ya pueden buscarlo con `/find sources`.", ephemeral=True
+    )
+
+
+@find_group.command(name="sources", description="Buscar una fuente por nombre o al azar")
+@app_commands.describe(nombre="Parte del nombre a buscar (opcional)", aleatorio="Elegir una al azar")
+async def find_sources(interaction: discord.Interaction, nombre: Optional[str] = None, aleatorio: bool = False):
+    fuentes = cargar_fuentes()
+    if not fuentes:
+        return await interaction.response.send_message("Todavía no hay fuentes guardadas.", ephemeral=True)
+
+    candidatos = fuentes
+    if nombre:
+        candidatos = [f for f in fuentes if nombre.lower() in f["nombre"].lower()]
+        if not candidatos:
+            return await interaction.response.send_message(f"No encontré nada con «{nombre}».", ephemeral=True)
+
+    # Sin nombre o con aleatorio, elige una al azar; con nombre exacto de varias, muestra opciones
+    if aleatorio or not nombre:
+        elegida = random.choice(candidatos)
+    elif len(candidatos) == 1:
+        elegida = candidatos[0]
+    else:
+        lista = "\n".join(f"• {f['nombre']}" for f in candidatos[:10])
+        return await interaction.response.send_message(
+            f"Encontré varias coincidencias, sé más específico:\n{lista}", ephemeral=True
+        )
+
+    if not os.path.exists(elegida["ruta"]):
+        return await interaction.response.send_message(
+            f"El archivo de **{elegida['nombre']}** ya no está en el servidor.", ephemeral=True
+        )
+    await interaction.response.send_message(
+        f"**{elegida['nombre']}**",
+        file=discord.File(elegida["ruta"], filename=elegida["archivo"]),
+    )
+
+
+tree.add_command(find_group)
+
+
 @client.event
 async def on_ready():
+    await tree.sync()
     print(f"Conectado como {client.user}")
 
 
 @client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
+        return
+
+    # Solo los admins del servidor pueden usar el bot
+    if not es_admin(message.author):
         return
 
     # Comandos con prefijo: ? 175 <comando>
