@@ -33,7 +33,7 @@ SYSTEM_PROMPT = (
     "Si la pregunta es ambigua, pide una aclaración corta. "
     "Conoces los comandos del bot por si alguien se pierde: "
     "`? 175 ask <pregunta>`, `? 175 translate <idioma> <texto>`, `? 175 trivia [tema]`, `? 175 r <letra>`, "
-    "`? 175 respuesta` y `? 175 puntajes`. "
+    "`? 175 respuesta`, `? 175 chiste` (o `? 175 hasme un chiste`) y `? 175 puntajes`. "
     "Tus respuestas no deben superar los 1900 caracteres.\n"
 )
 
@@ -56,6 +56,9 @@ trivia_activa = {}
 
 # Preguntas recientes por canal, para no repetirlas
 historial_trivia = defaultdict(lambda: deque(maxlen=30))
+
+# Chistes recientes por canal, para no repetirlos
+historial_chistes = defaultdict(lambda: deque(maxlen=30))
 
 
 def cargar_puntajes():
@@ -129,6 +132,33 @@ async def manejar_comando(message, comando):
     accion = partes[0].lower() if partes else ""
     resto = partes[1].strip() if len(partes) > 1 else ""
     canal = message.channel.id
+
+    # ? 175 chiste  /  ? 175 hasme un chiste
+    if accion == "chiste" or comando.lower().startswith("hasme un chiste"):
+        evitar = " | ".join(historial_chistes[canal]) or "ninguno"
+        async with message.channel.typing():
+            try:
+                chiste = await preguntar_ia(
+                    [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Eres un amigo gracioso de un servidor de Discord. Cuenta UN chiste corto en español, "
+                                "sin ofender a nadie ni usar temas sexuales, de odio o violentos. "
+                                "Solo responde con el chiste, sin introducción. "
+                                f"No repitas ninguno de estos: {evitar}."
+                            ),
+                        },
+                        {"role": "user", "content": "Cuéntame un chiste."},
+                    ],
+                    max_tokens=300,
+                )
+            except Exception as e:
+                print("Error chiste:", e)
+                chiste = "Hoy no me sale ninguno, me quedé en blanco. Intenta de nuevo."
+        chiste = chiste.strip() or "Me quedé en blanco, intenta de nuevo."
+        historial_chistes[canal].append(chiste[:200])
+        return await enviar(message, chiste)
 
     # ? 175 ask <pregunta>
     if accion == "ask":
@@ -223,7 +253,7 @@ async def manejar_comando(message, comando):
             return await enviar(message, "Todavía no hay puntajes.")
         return await enviar(message, "Puntajes:\n" + "\n".join(f"<@{u}>: {p}" for u, p in sorted(puntajes.items(), key=lambda x: -x[1])))
 
-    await enviar(message, "Comandos: `ask`, `translate`, `trivia [tema]`, `r`, `respuesta`, `puntajes`.")
+    await enviar(message, "Comandos: `ask`, `translate`, `trivia [tema]`, `r`, `respuesta`, `chiste`, `puntajes`.")
 
 
 @client.event
