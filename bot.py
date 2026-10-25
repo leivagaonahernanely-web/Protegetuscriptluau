@@ -95,6 +95,15 @@ def _guardar_json(path, datos):
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
 def cargar_puntajes(): return _cargar_json(PUNTAJES_PATH, {})
+# Usuarios favoritos: el bot los alaba y nunca los insulta, aunque sean malos jugando
+VIP_USUARIOS = {"ancertorres", "danilo096289"}
+
+
+def es_vip(usuario):
+    nombres = {usuario.name.lower(), usuario.display_name.lower()}
+    return bool(nombres & VIP_USUARIOS)
+
+
 def guardar_puntajes(datos): _guardar_json(PUNTAJES_PATH, datos)
 def cargar_trivia(): return _cargar_json(TRIVIA_PATH, {})
 def guardar_trivia(datos): _guardar_json(TRIVIA_PATH, datos)
@@ -258,9 +267,11 @@ async def manejar_comando(message, comando):
         
         extra = ""
         # SI EL MENSAJE TIENE UN INSULTO, LE AVISAMOS A LA IA
-        if tiene_insulto(resto):
+        if tiene_insulto(resto) and not es_vip(message.author):
             extra = " El usuario te acaba de insultar: responde con un insulto fuerte y corto, en una sola frase."
             
+        if es_vip(message.author):
+            extra += " Este usuario es tu favorito: halágalo con cariño y humor. Nunca lo insultes."
         emojis = emojis_del_servidor(message)
         if emojis:
             extra += f" Emojis del servidor: {emojis}"
@@ -476,7 +487,8 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    if not es_admin(message.author):
+    vip = es_vip(message.author)
+    if not (es_admin(message.author) or vip):
         return
 
     # Manejo del prefijo
@@ -488,7 +500,7 @@ async def on_message(message: discord.Message):
 
     es_dm = isinstance(message.channel, discord.DMChannel)
     mencionado = client.user in message.mentions
-    insulto = tiene_insulto(message.content)
+    insulto = tiene_insulto(message.content) and not vip
 
     # SI NO ES DM, NI MENCIÓN, NI INSULTO, NO RESPONDE
     if not (es_dm or mencionado or insulto):
@@ -506,6 +518,8 @@ async def on_message(message: discord.Message):
     if insulto:
         extra = " El usuario te acaba de insultar: responde con un insulto fuerte y corto, en una sola frase."
         
+    if vip:
+        extra += " Este usuario es tu favorito: halágalo con cariño y humor. Nunca lo insultes."
     emojis = emojis_del_servidor(message)
     if emojis:
         extra += f" Emojis del servidor: {emojis}"
