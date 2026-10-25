@@ -126,18 +126,26 @@ PREGUNTA_PROMPT = (
 
 # Conocimientos de Luau (lenguaje de Roblox), para todos los prompts
 DISCORD_INFO = (
-    " Conoces Discord a fondo: servidores, canales de texto y de voz, categorías, hilos, roles y permisos, "
-    "bots, comandos con barra (/), menciones, AutoMod, verificación y cómo funcionan los tickets con bots de soporte. "
-    "Si preguntan cómo hacer algo en Discord, explícalo en pasos cortos. "
+    " Conoces Discord a fondo: servidores, canales de texto, voz, foros e hilos, categorías, roles y su jerarquía, "
+    "permisos por rol y por canal, verificación, AutoMod, bots, comandos con barra (/) y menciones. "
+    "Sabes que un bot necesita el scope 'bot' y 'applications.commands' al invitarlo, y los intents activados "
+    "en el Developer Portal (por ejemplo Message Content para leer mensajes). "
+    "Sabes cómo funcionan los bots de tickets: se abre un canal con número, el bot da la bienvenida y el staff atiende. "
+    "Si preguntan cómo hacer algo en Discord, explícalo en pasos cortos y numerados. "
 )
 
 LUAU_INFO = (
-    " Sabes programar en Luau, el lenguaje de Roblox: scripts, LocalScripts y ModuleScripts, "
-    "servicios como game:GetService('Players'), ReplicatedStorage, ServerScriptService y TweenService, "
-    "eventos como Players.PlayerAdded, Touched y ClickDetector, RemoteEvents con FireServer/FireClient y OnServerEvent, "
-    "DataStoreService usado dentro de pcall, task.wait y task.spawn (en vez de wait), CFrame, Humanoid y Instance.new. "
-    "Si preguntan de Roblox o Luau, responde con código correcto y breve dentro de un bloque ```lua```. "
-    "Si no estás seguro de una API, dilo en vez de inventarla. "
+    " Sabes programar en Luau, el lenguaje de Roblox, y su modelo cliente-servidor: "
+    "Script corre en el servidor, LocalScript en el cliente y ModuleScript se comparte con require(). "
+    "Usas servicios como game:GetService('Players'), ReplicatedStorage, ServerScriptService, ServerStorage, "
+    "StarterGui, TweenService y DataStoreService (siempre dentro de pcall). "
+    "Conoces eventos como Players.PlayerAdded, Touched, ClickDetector y Humanoid.Died, "
+    "y comunicación con RemoteEvent y RemoteFunction usando FireServer, FireClient y OnServerEvent. "
+    "Para seguridad: el servidor valida todo lo que llega del cliente. "
+    "Usas task.wait, task.spawn y task.delay en vez de wait, spawn y delay (que están obsoletos), "
+    "y conoces CFrame, Vector3, Instance.new, :Clone(), :Destroy() y Debris. "
+    "Si preguntan de Roblox o Luau, responde con código correcto y breve dentro de un bloque ```lua```, "
+    "y explica en una frase qué hace. Si no estás seguro de una API, dilo en vez de inventarla. "
 )
 
 SYSTEM_PROMPT += LUAU_INFO + DISCORD_INFO
@@ -226,9 +234,38 @@ def cerrar_bloques(texto):
         texto += "\n```"
     return texto
 
+STICKER_RE = re.compile(r"\[STICKER:\s*([^\]]+)\]", re.I)
+sticker_ts = {}
+
+
+def instrucciones_stickers(message):
+    if not (message.guild and message.guild.stickers):
+        return ""
+    lista = "; ".join(f"{x.name} ({x.description or 'sin descripción'})" for x in message.guild.stickers[:25])
+    return (
+        " Puedes enviar un sticker del servidor, pero SOLO cuando la situación lo pida de verdad "
+        "(un saludo, un agradecimiento, una broma o un 'no sé'), y como mucho en 1 de cada 5 respuestas. "
+        f"Stickers disponibles: {lista}. Para enviarlo, pon al final la línea [STICKER: nombre] con el nombre exacto. "
+        "Si no aplica, no pongas nada."
+    )
+
+
 async def enviar(message, texto):
     texto = cerrar_bloques(texto)
-    await message.reply(texto[:1990], mention_author=False)
+    sticker = None
+    m = STICKER_RE.search(texto)
+    if m:
+        texto = STICKER_RE.sub("", texto).strip()
+        nombre = m.group(1).strip().lower()
+        ahora = time.time()
+        # Máximo un sticker cada 2 minutos por canal para que no abuse
+        if message.guild and ahora - sticker_ts.get(message.channel.id, 0) > 120:
+            sticker = next((x for x in message.guild.stickers if x.name.lower() == nombre), None)
+            if sticker:
+                sticker_ts[message.channel.id] = ahora
+    if sticker:
+        return await message.reply(texto[:1990] or None, mention_author=False, stickers=[sticker])
+    await message.reply(texto[:1990] or "🙂", mention_author=False)
 
 _emoji_cache = {}
 def emojis_del_servidor(message):
@@ -589,7 +626,7 @@ async def on_message(message: discord.Message):
         async with message.channel.typing():
             try:
                 respuesta = await preguntar_ia(
-                    [{"role": "system", "content": TICKET_PROMPT}, *historial_tickets[canal_t]],
+                    [{"role": "system", "content": TICKET_PROMPT + instrucciones_stickers(message)}, *historial_tickets[canal_t]],
                     max_tokens=250,
                     temperature=0.2,
                 )
@@ -625,7 +662,7 @@ async def on_message(message: discord.Message):
             try:
                 respuesta = await preguntar_ia(
                     [
-                        {"role": "system", "content": PREGUNTA_PROMPT},
+                        {"role": "system", "content": PREGUNTA_PROMPT + instrucciones_stickers(message)},
                         {"role": "user", "content": texto},
                     ],
                     max_tokens=200,
@@ -652,7 +689,7 @@ async def on_message(message: discord.Message):
     async with message.channel.typing():
         try:
             respuesta = await preguntar_ia(
-                [{"role": "system", "content": VIP_PROMPT if vip else SYSTEM_PROMPT + extra}, *historial[canal]],
+                [{"role": "system", "content": (VIP_PROMPT if vip else SYSTEM_PROMPT + extra) + instrucciones_stickers(message)}, *historial[canal]],
                 max_tokens=150,
                 temperature=0.2,
             )
