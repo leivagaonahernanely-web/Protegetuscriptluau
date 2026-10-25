@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import re
 import time
 import logging
 import uuid
@@ -124,16 +125,37 @@ PREGUNTA_PROMPT = (
 
 
 # Conocimientos de Luau (lenguaje de Roblox), para todos los prompts
+DISCORD_INFO = (
+    " Conoces Discord a fondo: servidores, canales de texto y de voz, categorías, hilos, roles y permisos, "
+    "bots, comandos con barra (/), menciones, AutoMod, verificación y cómo funcionan los tickets con bots de soporte. "
+    "Si preguntan cómo hacer algo en Discord, explícalo en pasos cortos. "
+)
+
 LUAU_INFO = (
     " Sabes programar en Luau, el lenguaje de Roblox: scripts, LocalScripts y ModuleScripts, "
-    "servicios como game:GetService('Players'), ReplicatedStorage y ServerScriptService, "
-    "RemoteEvents, Instance.new, task.wait y task.spawn. "
+    "servicios como game:GetService('Players'), ReplicatedStorage, ServerScriptService y TweenService, "
+    "eventos como Players.PlayerAdded, Touched y ClickDetector, RemoteEvents con FireServer/FireClient y OnServerEvent, "
+    "DataStoreService usado dentro de pcall, task.wait y task.spawn (en vez de wait), CFrame, Humanoid y Instance.new. "
     "Si preguntan de Roblox o Luau, responde con código correcto y breve dentro de un bloque ```lua```. "
-    "Si no estás seguro de una API, dilo en vez de inventarla."
+    "Si no estás seguro de una API, dilo en vez de inventarla. "
 )
-SYSTEM_PROMPT += LUAU_INFO
-VIP_PROMPT += LUAU_INFO
-PREGUNTA_PROMPT += LUAU_INFO
+
+SYSTEM_PROMPT += LUAU_INFO + DISCORD_INFO
+VIP_PROMPT += LUAU_INFO + DISCORD_INFO
+PREGUNTA_PROMPT += LUAU_INFO + DISCORD_INFO
+
+TICKET_PROMPT = (
+    "Eres Botassistant175, el soporte de este servidor de Discord dentro de un canal de ticket. "
+    "Un miembro del staff atenderá al usuario, así que tú resuelves dudas básicas de Roblox/Luau y de Discord. "
+    "Responde con datos verídicos; si no sabes o es algo que solo el staff puede resolver, dilo y pide paciencia. "
+    "Sé breve (máximo 5 líneas), amable y directo. Responde en el idioma de la pregunta."
+) + LUAU_INFO + DISCORD_INFO
+
+
+def es_canal_ticket(canal):
+    # Los tickets son canales cuyo nombre termina en número, por ejemplo ticket-0042 o 0042
+    nombre = getattr(canal, "name", "") or ""
+    return bool(re.search(r"(?:^|[-_])\d+$", nombre))
 
 
 def es_pregunta(texto):
@@ -538,6 +560,31 @@ async def on_message(message: discord.Message):
         if comando:
             await manejar_comando(message, comando)
         return
+
+    # Tickets: cualquiera puede escribir "?" y el bot responde; en lo demás no se mete
+    if es_canal_ticket(message.channel):
+        if message.content.strip().startswith("?"):
+            duda = message.content.strip()[1:].strip()
+            pedido = duda or "El usuario escribió solo '?'. Pregúntale brevemente en qué le puedes ayudar."
+            async with message.channel.typing():
+                try:
+                    respuesta = await preguntar_ia(
+                        [
+                            {"role": "system", "content": TICKET_PROMPT},
+                            {"role": "user", "content": pedido},
+                        ],
+                        max_tokens=250,
+                        temperature=0.2,
+                    )
+                    respuesta = respuesta or "Un miembro del staff te atenderá pronto."
+                except Exception as e:
+                    log.error("Error ticket: %s", e)
+                    respuesta = "Ups, algo falló. Un miembro del staff te atenderá pronto."
+            if tiene_insulto(respuesta):
+                respuesta = "Un miembro del staff te atenderá pronto. 🙂"
+            return await enviar(message, respuesta)
+        if not puede_chatear:
+            return
 
     es_dm = isinstance(message.channel, discord.DMChannel)
     mencionado = client.user in message.mentions
