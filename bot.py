@@ -9,8 +9,8 @@ from openai import AsyncOpenAI
 # Las keys se leen de las variables de entorno (Railway → Variables).
 # Nunca escribas la key directamente en este archivo.
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
-GROQ_API_KEY = os.environ["GROQ_API_KEY"]
-MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+MODEL = os.environ.get("LLM_MODEL", "gemini-2.5-flash")
 
 # Archivo donde se guardan los puntajes de trivia.
 # En Railway, para que no se borren al redesplegar, usa un Volume y apunta aquí.
@@ -38,8 +38,11 @@ intents.message_content = True  # actívalo también en el Developer Portal
 
 client = discord.Client(intents=intents)
 
-# Groq usa un API compatible con OpenAI
-ai = AsyncOpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+# Gemini ofrece un endpoint compatible con OpenAI
+ai = AsyncOpenAI(
+    api_key=GEMINI_API_KEY,
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+)
 
 # Memoria corta por canal (últimos 10 mensajes)
 historial = defaultdict(lambda: deque(maxlen=10))
