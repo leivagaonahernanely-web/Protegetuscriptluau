@@ -29,7 +29,6 @@ cooldowns = {}
 TRIVIA_TIMEOUT = 60 * 30
 HISTORIAL_TIMEOUT = 60 * 60 * 6
 
-# --- DETECCIÓN DE INSULTOS ---
 # Si el mensaje tiene alguna de estas palabras, el bot sabe que lo están insultando
 PALABRAS_DISPARADORAS = [
     "imbécil", "imbecil", "idiota", "tonto", "tonta", "pendejo", "pendeja",
