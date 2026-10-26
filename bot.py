@@ -587,6 +587,20 @@ async def on_ready():
     log.info("Conectado como %s", client.user)
 
 @client.event
+async def on_guild_channel_create(channel):
+    # Al abrir un ticket, el bot saluda y pregunta si necesita ayuda o espera al staff
+    if not isinstance(channel, discord.TextChannel) or not es_canal_ticket(channel):
+        return
+    try:
+        await channel.send(
+            "¡Hola! 👋 ¿En qué te puedo ayudar? Si prefieres, puedes esperar a un miembro del staff, "
+            "que te atenderá pronto."
+        )
+    except Exception as e:
+        log.error("No pude saludar en el ticket %s: %s", channel.name, e)
+
+
+@client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
