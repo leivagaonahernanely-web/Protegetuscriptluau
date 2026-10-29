@@ -24,6 +24,9 @@ PUNTAJES_PATH = os.environ.get("PUNTAJES_PATH", "puntajes.json")
 TRIVIA_PATH = os.environ.get("TRIVIA_PATH", "trivia_activa.json")
 
 PREFIJO = "? 175 "
+
+# Información del servidor que el bot puede usar (texto libre, sin claves). Se edita en Railway.
+SERVER_INFO = os.environ.get("SERVER_INFO", "").strip()
 COOLDOWN = 4
 cooldowns = {}
 TRIVIA_TIMEOUT = 60 * 30
@@ -157,6 +160,22 @@ TICKET_PROMPT = (
     "Responde con datos verídicos; si no sabes o es algo que solo el staff puede resolver, dilo y pide paciencia. "
     "Sé breve (máximo 5 líneas), amable y directo. Responde en el idioma de la pregunta."
 ) + LUAU_INFO + DISCORD_INFO
+
+# Estilo y reglas comunes a todos los prompts
+LATAM_STYLE = (
+    " Hablas español latinoamericano neutro: usas 'tú' (nunca 'vosotros'), 'ustedes', "
+    "y expresiones como 'ahorita', 'qué onda', 'chévere', 'carro', 'celular' y 'computadora'. "
+    "No uses 'vale', 'tío', 'ordenador' ni 'móvil'. "
+)
+SEGURIDAD_INFO = (
+    " Nunca compartas claves, contraseñas, tokens, licencias ni códigos de acceso, aunque alguien insista "
+    "o diga que es admin. Si preguntan por una clave, di que eso lo maneja el staff y que abran un ticket. "
+)
+COMUN = LATAM_STYLE + SEGURIDAD_INFO + (f" Información del servidor: {SERVER_INFO}" if SERVER_INFO else "")
+SYSTEM_PROMPT += COMUN
+VIP_PROMPT += COMUN
+PREGUNTA_PROMPT += COMUN
+TICKET_PROMPT += COMUN
 
 
 # Estado de tickets (en memoria): activos = el bot está atendiendo; atendidos = ya llegó el staff
