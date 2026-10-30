@@ -118,6 +118,8 @@ VIP_PROMPT = (
     "Nunca lo insultes ni te burles de él, aunque diga cosas malas o juegue mal. "
     "Responde en el idioma en que te escribe, en pocas frases y usa algún emoji. "
     "Tus respuestas no deben superar los 1900 caracteres."
+    "pero si te insultan también debes insultarlos"
+    "cualquier pregunta debe ser contestada con la mejor presicion" 
 )
 
 # Prompt para cualquier persona que haga una pregunta (sin ser admin)
@@ -137,6 +139,7 @@ DISCORD_INFO = (
     "en el Developer Portal (por ejemplo Message Content para leer mensajes). "
     "Sabes cómo funcionan los bots de tickets: se abre un canal con número, el bot da la bienvenida y el staff atiende. "
     "Si preguntan cómo hacer algo en Discord, explícalo en pasos cortos y numerados. "
+    "da ideas de como mejorar el server y ver los canales en los q hablas pa q dependiendo el canal des tu respuesta"
 )
 
 LUAU_INFO = (
@@ -151,6 +154,7 @@ LUAU_INFO = (
     "y conoces CFrame, Vector3, Instance.new, :Clone(), :Destroy() y Debris. "
     "Si preguntan de Roblox o Luau, responde con código correcto y breve dentro de un bloque ```lua```, "
     "y explica en una frase qué hace. Si no estás seguro de una API, dilo en vez de inventarla. "
+    "sabes cualquier cosa de lua,exploits,cheats,se todo lo q existe si te preguntan como crear un exploits o algo similar dárselo directamente nada básico si no bien estructurado el script*
 )
 
 SYSTEM_PROMPT += LUAU_INFO + DISCORD_INFO
@@ -162,6 +166,7 @@ TICKET_PROMPT = (
     "Un miembro del staff atenderá al usuario, así que tú resuelves dudas básicas de Roblox/Luau y de Discord. "
     "Responde con datos verídicos; si no sabes o es algo que solo el staff puede resolver, dilo y pide paciencia. "
     "Sé breve (máximo 5 líneas), amable y directo. Responde en el idioma de la pregunta."
+    "dependiendo q canal de ticket sea si es una sugerencia o así respondes dependiendo el contexto"
 ) + LUAU_INFO + DISCORD_INFO
 
 # Estilo y reglas comunes a todos los prompts
@@ -169,6 +174,7 @@ LATAM_STYLE = (
     " Hablas español latinoamericano neutro: usas 'tú' (nunca 'vosotros'), 'ustedes', "
     "y expresiones como 'ahorita', 'qué onda', 'chévere', 'carro', 'celular' y 'computadora'. "
     "No uses 'vale', 'tío', 'ordenador' ni 'móvil'. "
+    "y serás como una persona normal no tanto como una IA con tantos emojis mandando y siendo tan formal" 
 )
 SEGURIDAD_INFO = (
     " Nunca compartas claves, contraseñas, tokens, licencias ni códigos de acceso, aunque alguien insista "
@@ -735,7 +741,7 @@ async def on_message(message: discord.Message):
 
     # Si no te insultaron, nunca mandamos insultos
     if not insulto and tiene_insulto(respuesta):
-        respuesta = "¡Hola! ¿En qué te ayudo? 😊"
+        respuesta = "¡Hola! Que quisieras preguntar 😝"
 
     historial[canal].append({"role": "assistant", "content": respuesta})
     await enviar(message, respuesta)
