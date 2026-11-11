@@ -25,14 +25,12 @@ TRIVIA_PATH = os.environ.get("TRIVIA_PATH", "trivia_activa.json")
 
 PREFIJO = "? 175 "
 
-# Información del servidor que el bot puede usar (texto libre, sin claves). Se edita en Railway.
 SERVER_INFO = os.environ.get("SERVER_INFO", "").strip()
 COOLDOWN = 4
 cooldowns = {}
 TRIVIA_TIMEOUT = 60 * 30
-HISTORIAL_TIMEOUT = 60 * 60 * 6
+HISTORIAL_TIMEOUT = 60 * 60 * 60
 
-# Si el mensaje tiene alguna de estas palabras, el bot sabe que lo están insultando
 PALABRAS_DISPARADORAS = [
     "imbécil", "imbecil", "idiota", "tonto", "tonta", "pendejo", "pendeja",
     "cabrón", "cabron", "gilipollas", "mamón", "mamon", "puto", "puta",
@@ -103,7 +101,7 @@ def _guardar_json(path, datos):
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
 def cargar_puntajes(): return _cargar_json(PUNTAJES_PATH, {})
-# Usuarios favoritos: el bot los alaba y nunca los insulta, aunque sean malos jugando
+    
 VIP_USUARIOS = {"ancertorres", "danilo096289"}
 
 
@@ -111,8 +109,6 @@ def es_vip(usuario):
     nombres = {usuario.name.lower(), usuario.display_name.lower()}
     return bool(nombres & VIP_USUARIOS)
 
-
-# Prompt aparte para los VIP: solo halagos, sin ninguna instrucción de insultar
 VIP_PROMPT = (
     "Eres Botassistant175, el bot del servidor, y este usuario es tu favorito. "
     "Responde a lo que pregunta con datos verídicos: si no estás seguro, dilo y no inventes. "
@@ -124,7 +120,6 @@ VIP_PROMPT = (
     "cualquier pregunta debe ser contestada con la mejor presicion" 
 )
 
-# Prompt para cualquier persona que haga una pregunta (sin ser admin)
 PREGUNTA_PROMPT = (
     "Eres Botassistant175, el bot del servidor de Discord. Respondes preguntas con datos verídicos. "
     "Si no estás seguro de algo, dilo claramente y no inventes datos, nombres, fechas ni cifras. "
@@ -133,8 +128,6 @@ PREGUNTA_PROMPT = (
     "si te pregunta precios del flash and Block o 175 hub les darás el precio q los precios del flash and Block1 garama base 1 day 3 bases 4 days 1 color 14 days 2 permanent colors Del 175 hub 2 garama base 1 day 7 days 1 color 15 días 2 color y permanent 3 color y haslo con una tarjeta pa q se vea bonito y impecable"
 )
 
-
-# Conocimientos de Luau (lenguaje de Roblox), para todos los prompts
 DISCORD_INFO = (
     " Conoces Discord a fondo: servidores, canales de texto, voz, foros e hilos, categorías, roles y su jerarquía, "
     "permisos por rol y por canal, verificación, AutoMod, bots, comandos con barra (/) y menciones. "
@@ -172,7 +165,6 @@ TICKET_PROMPT = (
     "dependiendo q canal de ticket sea si es una sugerencia o así respondes dependiendo el contexto"
 ) + LUAU_INFO + DISCORD_INFO
 
-# Estilo y reglas comunes a todos los prompts
 LATAM_STYLE = (
     " Hablas español latinoamericano neutro: usas 'tú' (nunca 'vosotros'), 'ustedes', "
     "y expresiones como 'ahorita', 'qué onda', 'chévere', 'carro', 'celular' y 'computadora'. "
@@ -189,21 +181,19 @@ VIP_PROMPT += COMUN
 PREGUNTA_PROMPT += COMUN
 TICKET_PROMPT += COMUN
 
-
-# Estado de tickets (en memoria): activos = el bot está atendiendo; atendidos = ya llegó el staff
 tickets_activos = set()
 tickets_atendidos = set()
 historial_tickets = defaultdict(lambda: deque(maxlen=12))
 
 
 def es_canal_ticket(canal):
-    # Los tickets son canales cuyo nombre termina en número, por ejemplo ticket-0042 o 0042
+    
     nombre = getattr(canal, "name", "") or ""
     return bool(re.search(r"(?:^|[-_])\d+$", nombre))
 
 
 def es_pregunta(texto):
-    # Pregunta = el mensaje termina en ? (o empieza con ¿)
+    
     t = texto.strip()
     return t.endswith("?") or t.endswith("？") or t.startswith("¿")
 
@@ -288,7 +278,7 @@ async def enviar(message, texto):
         texto = STICKER_RE.sub("", texto).strip()
         nombre = m.group(1).strip().lower()
         ahora = time.time()
-        # Como mucho un sticker cada 10 minutos por canal y solo a veces
+
         if message.guild and ahora - sticker_ts.get(message.channel.id, 0) > 600 and random.random() < 0.3:
             sticker = next((x for x in message.guild.stickers if x.name.lower() == nombre), None)
             if sticker:
@@ -400,7 +390,7 @@ async def manejar_comando(message, comando):
             return await enviar(message, "Escribe tu pregunta así: `? 175 ask tu pregunta`")
         
         extra = ""
-        # SI EL MENSAJE TIENE UN INSULTO, LE AVISAMOS A LA IA
+        
         if tiene_insulto(resto) and not es_vip(message.author):
             extra = " El usuario te acaba de insultar: responde con un insulto fuerte y corto, en una sola frase."
             
@@ -639,7 +629,6 @@ async def on_message(message: discord.Message):
     vip = es_vip(message.author)
     puede_chatear = admin or vip
 
-    # Comandos con prefijo: solo admins y VIP
     if message.content.startswith(PREFIJO):
         if not puede_chatear:
             return
@@ -648,7 +637,6 @@ async def on_message(message: discord.Message):
             await manejar_comando(message, comando)
         return
 
-    # Tickets: el bot atiende desde el primer "?" hasta que llegue un miembro del staff
     if es_canal_ticket(message.channel):
         canal_t = message.channel.id
         if admin:
@@ -661,7 +649,7 @@ async def on_message(message: discord.Message):
         contenido = message.content.strip()
         if not contenido:
             return
-        # Cualquier mensaje de quien no es staff se atiende, sea lo que sea
+            
         tickets_activos.add(canal_t)
         duda = contenido[1:].strip() if contenido.startswith("?") else contenido
         if not duda:
@@ -700,7 +688,6 @@ async def on_message(message: discord.Message):
 
     canal = message.channel.id
 
-    # Cualquier persona puede hacer preguntas: respuesta sin historial ni insultos
     if not puede_chatear:
         async with message.channel.typing():
             try:
